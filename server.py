@@ -1,7 +1,7 @@
 """
-server.py -- the Pong cloud server (Part 1: accounts, friends, chat, coins).
+server.py -- the Pong cloud server.
 
-Uses aiohttp to handle WebSockets seamlessly behind cloud proxies (Render, Railway, etc.)
+Uses aiohttp to handle WebSockets seamlessly behind Render proxies
 and prevent 405 Method Not Allowed / 426 Upgrade Required errors.
 """
 
@@ -14,7 +14,6 @@ import time
 from aiohttp import web
 import storage
 
-# Bind to 0.0.0.0 and dynamically assign Render's PORT variable
 HOST = "0.0.0.0"
 PORT = int(os.environ.get("PORT", 8765))
 
@@ -25,7 +24,6 @@ logging.basicConfig(
     datefmt="%H:%M:%S"
 )
 
-# username (lowercased) -> web.WebSocketResponse connection
 ONLINE = {}
 
 
@@ -280,7 +278,6 @@ async def health_check(request):
 def init_app():
     storage.init_db()
     app = web.Application()
-    # Accept connections on both root / and /ws
     app.router.add_get("/", websocket_handler)
     app.router.add_get("/ws", websocket_handler)
     app.router.add_get("/health", health_check)
