@@ -29,7 +29,7 @@ import time
 import websockets
 import storage
 
-HOST = "192.168.1.181"
+HOST = "0.0.0.0"
 PORT = 8765
 
 log = logging.getLogger("pong_cloud")
