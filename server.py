@@ -280,7 +280,7 @@ async def handle_connection(ws):
 async def main():
   storage.init_db()
   log.info("Pong cloud server listening on %s:%d", HOST, PORT)
-  async with websockets.serve(handle_connection, HOST, PORT, max_size=2**16):
+  async with websockets.serve(handle_connection, HOST, PORT,ping_interval=20, ping_timeout=20, max_size=2**16):
     await asyncio.Future()  # run forever
 
 
