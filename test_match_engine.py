@@ -247,8 +247,12 @@ m.ball.dx, m.ball.dy = -5, 0
 m.tick()
 check("ghosted ball passes through paddle (no bounce)", m.ball.dx == -5, m.ball.dx)
 
-run_ticks(m, 100)  # let the ghost timer fully expire (ball frozen, no scoring risk)
+m.ball.x, m.ball.y = 500, 300  # move it clear of the paddle before freezing
+m.ball.dx, m.ball.dy = 0.0, 0.0  # freeze -- otherwise it drifts left, scores, and the
+                                 # post-score freeze blocks the check below entirely
+run_ticks(m, 100)  # let the ghost timer fully expire
 check("ghost timer actually counts down and expires", m.ball.ghost_timer == 0, m.ball.ghost_timer)
+m.round_countdown = 0  # defensive: guarantee we're not mid post-score freeze
 m.ball.x = E.PADDLE_X1 + 5
 m.ball.y = m.p1.centery
 m.ball.dx, m.ball.dy = -5, 0
@@ -287,12 +291,14 @@ m.ball.dx, m.ball.dy = -1, 0  # heading toward p1, slow enough not to reach it i
 m.trigger_ability(1)
 m.tick()
 check("auto play activates", m.p1_auto == 360.0 - 1, m.p1_auto)
-m.set_input(1, -1)  # manual input should be ignored while auto is active
-dist_before = abs(m.p1.centery - m.ball.centery)
-run_ticks(m, 5)
-dist_after = abs(m.p1.centery - m.ball.centery)
-check("auto play moves paddle toward the ball (ignores manual input)",
-      dist_after < dist_before, (dist_before, dist_after))
+check("auto play snaps to the ball instantly (matches original's instant-tracking design)",
+      abs(m.p1.centery - m.ball.centery) < 0.01, (m.p1.centery, m.ball.centery))
+
+m.set_input(1, 1)  # manual input should be ignored while auto is active
+m.ball.y = 500  # move the ball -- if manual input were winning, paddle wouldn't follow
+run_ticks(m, 3)
+check("auto play keeps tracking the ball and ignores manual input",
+      abs(m.p1.centery - m.ball.centery) < 0.01, (m.p1.centery, m.ball.centery))
 
 # ---------------------------------------------------------------
 # Game over
