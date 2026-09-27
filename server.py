@@ -4,41 +4,31 @@ server.py -- the Pong cloud server (Part 1: accounts, friends, chat, coins).
 Run this on whichever machine is going to act as "the cloud":
     python3 server.py
 
-By default it listens on 0.0.0.0:8765, i.e. every network interface on
-that machine. For friends on the same Wi-Fi/LAN, they connect to your
-computer's local IP (e.g. 192.168.1.23) on port 8765 -- no internet
-hosting needed for that. To let friends connect over the real internet
-you'd forward port 8765 on your router to this machine, use a VPN like
-Hamachi/Radmin, or deploy this script to a small always-on host
-(Railway, Render, a cheap VPS, etc.) -- the script itself doesn't
-change either way, only where it's running.
-
-PROTOCOL
---------
-One JSON object per line-delimited websocket message. Every message
-has a "type" field. See PROTOCOL.md (shipped alongside this file) for
-the full message list. Client must "login" or "register" before any
-other message is accepted.
+By default it listens on 0.0.0.0 (all network interfaces) and dynamically
+reads PORT from the environment (defaulting to 8765 for local runs).
 """
 
 import asyncio
 import json
 import logging
+import os
 import time
 
 import websockets
 import storage
 
+# Bind to all network interfaces and dynamically pull the Cloud assigned PORT
 HOST = "0.0.0.0"
-PORT = 8765
+PORT = int(os.environ.get("PORT", 8765))
 
 log = logging.getLogger("pong_cloud")
-logging.basicConfig(level=logging.INFO, format="[%(asctime)s] %(message)s",
-                     datefmt="%H:%M:%S")
+logging.basicConfig(
+    level=logging.INFO,
+    format="[%(asctime)s] %(message)s",
+    datefmt="%H:%M:%S"
+)
 
-# username (lowercased) -> websocket connection, for every currently
-# logged-in client. This is the server's only in-memory state; anything
-# that needs to survive a restart lives in storage.py instead.
+# username (lowercased) -> websocket connection
 ONLINE = {}
 
 
@@ -62,11 +52,11 @@ async def send_to_username(target_username, msg_type, **fields):
 
 
 async def broadcast_presence(user, online):
-  """Tell every currently-connected friend of `user` that their status
-  changed, so a friends list updates live instead of only on refresh."""
+  """Tell every currently-connected friend of `user` that their status changed."""
   for friend in storage.list_friends(user["id"]):
-    await send_to_username(friend["username"], "presence",
-                            username=user["username"], online=online)
+    await send_to_username(
+        friend["username"], "presence", username=user["username"], online=online
+    )
 
 
 def _friends_payload(user_id):
@@ -105,12 +95,13 @@ async def handle_message(ws, user, data):
     else:
       await send(ws, "friend_list", friends=_friends_payload(user["id"]))
       if result == "sent":
-        await send_to_username(target["username"], "friend_request",
-                                from_username=user["username"])
+        await send_to_username(
+            target["username"], "friend_request", from_username=user["username"]
+        )
       elif result == "accepted":
-        # They'd already requested us; both sides are friends now.
-        await send_to_username(target["username"], "friend_list",
-                                friends=_friends_payload(target["id"]))
+        await send_to_username(
+            target["username"], "friend_list", friends=_friends_payload(target["id"])
+        )
         await broadcast_presence(user, True)
 
   elif mtype == "friend_respond":
@@ -122,8 +113,9 @@ async def handle_message(ws, user, data):
     if storage.respond_friend_request(user["id"], requester["id"], accept):
       await send(ws, "friend_list", friends=_friends_payload(user["id"]))
       if accept:
-        await send_to_username(requester["username"], "friend_list",
-                                friends=_friends_payload(requester["id"]))
+        await send_to_username(
+            requester["username"], "friend_list", friends=_friends_payload(requester["id"])
+        )
         await broadcast_presence(user, True)
 
   elif mtype == "chat_send":
@@ -136,9 +128,10 @@ async def handle_message(ws, user, data):
       await send(ws, "error", message="You can only message friends.")
       return
     storage.save_message(user["id"], target["id"], body)
-    payload = dict(from_username=user["username"], to=target["username"],
-                   body=body, ts=time.time())
-    await send(ws, "chat_message", **payload)          # echo to sender
+    payload = dict(
+        from_username=user["username"], to=target["username"], body=body, ts=time.time()
+    )
+    await send(ws, "chat_message", **payload)
     await send_to_username(target["username"], "chat_message", **payload)
 
   elif mtype == "chat_history":
@@ -147,12 +140,17 @@ async def handle_message(ws, user, data):
     if target is None:
       return
     rows = storage.get_history(user["id"], target["id"])
-    out = [{
-        "from_username": user["username"] if r["sender_id"] == user["id"] else target["username"],
-        "to": target["username"] if r["sender_id"] == user["id"] else user["username"],
-        "body": r["body"],
-        "ts": r["ts"],
-    } for r in rows]
+    out = [
+        {
+            "from_username": (
+                user["username"] if r["sender_id"] == user["id"] else target["username"]
+            ),
+            "to": target["username"] if r["sender_id"] == user["id"] else user["username"],
+            "body": r["body"],
+            "ts": r["ts"],
+        }
+        for r in rows
+    ]
     await send(ws, "chat_history", with_username=target["username"], messages=out)
 
   elif mtype == "coins_send":
@@ -177,26 +175,28 @@ async def handle_message(ws, user, data):
     await send(ws, "coins_update", coins=new_balance)
     recipient = storage.get_user_by_id(target["id"])
     await send_to_username(target["username"], "coins_update", coins=recipient["coins"])
-    await send_to_username(target["username"], "coins_received",
-                            from_username=user["username"], amount=amount)
+    await send_to_username(
+        target["username"], "coins_received", from_username=user["username"], amount=amount
+    )
 
   elif mtype == "challenge_send":
-    # Part 2 will make this actually start a synced match. For now it's
-    # honest about not being wired up yet, but a friend can already see
-    # the request land live.
     to_name = str(data.get("to", ""))
     target = storage.get_user_by_username(to_name)
     if target is None or not storage.are_friends(user["id"], target["id"]):
       await send(ws, "error", message="You can only challenge friends.")
       return
-    delivered = await send_to_username(target["username"], "challenge_received",
-                                        from_username=user["username"])
+    delivered = await send_to_username(
+        target["username"], "challenge_received", from_username=user["username"]
+    )
     if delivered:
       await send(ws, "info", message="Challenge sent to %s." % target["username"])
     else:
       await send(ws, "error", message="%s is offline." % target["username"])
-    await send(ws, "info",
-               message="(Online matches arrive in Part 2 -- for now this just notifies them.)")
+    await send(
+        ws,
+        "info",
+        message="(Online matches arrive in Part 2 -- for now this just notifies them.)",
+    )
 
   else:
     await send(ws, "error", message="Unknown message type '%s'." % mtype)
@@ -205,7 +205,6 @@ async def handle_message(ws, user, data):
 async def handle_connection(ws):
   user = None
   try:
-    # First message must authenticate.
     raw = await ws.recv()
     data = json.loads(raw)
     mtype = data.get("type")
@@ -234,12 +233,6 @@ async def handle_connection(ws):
 
     key = _norm(user["username"])
     old_ws = ONLINE.get(key)
-    # Register the new session FIRST, then close the old one. Doing it in
-    # this order means that by the time the old connection's own cleanup
-    # code runs (concurrently, while we await its close below), it will
-    # already see itself as superseded and skip broadcasting a spurious
-    # "went offline" over this new session's upcoming "online" -- see the
-    # was_current check in the finally block below.
     ONLINE[key] = ws
     if old_ws is not None:
       try:
@@ -247,8 +240,7 @@ async def handle_connection(ws):
       except Exception:
         pass
     log.info("%s connected (%d online)", user["username"], len(ONLINE))
-    await send(ws, "auth_ok", user_id=user["id"], username=user["username"],
-               coins=user["coins"])
+    await send(ws, "auth_ok", user_id=user["id"], username=user["username"], coins=user["coins"])
     await send(ws, "friend_list", friends=_friends_payload(user["id"]))
     await broadcast_presence(user, True)
 
@@ -257,7 +249,7 @@ async def handle_connection(ws):
         data = json.loads(raw)
       except json.JSONDecodeError:
         continue
-      user = storage.get_user_by_id(user["id"])  # refresh (coins may have changed)
+      user = storage.get_user_by_id(user["id"])
       await handle_message(ws, user, data)
 
   except websockets.ConnectionClosed:
@@ -269,10 +261,6 @@ async def handle_connection(ws):
       if was_current:
         del ONLINE[key]
       log.info("%s disconnected (%d online)", user["username"], len(ONLINE))
-      # Only announce "went offline" if this connection was the one
-      # actually registered -- an evicted stale session (see the login
-      # handler above) has already been replaced, so it must not get
-      # to broadcast a false "offline" over the new session's "online".
       if was_current:
         await broadcast_presence(user, False)
 
@@ -280,8 +268,15 @@ async def handle_connection(ws):
 async def main():
   storage.init_db()
   log.info("Pong cloud server listening on %s:%d", HOST, PORT)
-  async with websockets.serve(handle_connection, HOST, PORT,ping_interval=20, ping_timeout=20, max_size=2**16):
-    await asyncio.Future()  # run forever
+  async with websockets.serve(
+      handle_connection,
+      HOST,
+      PORT,
+      ping_interval=20,
+      ping_timeout=20,
+      max_size=2**16
+  ):
+    await asyncio.Future()
 
 
 if __name__ == "__main__":
