@@ -367,8 +367,8 @@ def draw_button(surface, rect, label, font, base_color, hot_color, mouse_pos,
 #  The actual synced match (tick system) is Part 2; CHALLENGE below only
 #  notifies the other player for now, it doesn't start a game yet.
 # ---------------------------------------------------------------------
-SERVER_HOST = "pong-skills-remastered-release.onrender.com"  # LAN play: change to your host's local IP.
-SERVER_PORT = int(os.environ.get("PORT", 8765))        # Both machines must use the same port.
+SERVER_HOST = "74.220.52.0/24"  # LAN play: change to your host's local IP.
+SERVER_PORT = int(os.environ.get("PORT", 8765))         # Both machines must use the same port.
 
 net = NetClient()
 net_state = {
