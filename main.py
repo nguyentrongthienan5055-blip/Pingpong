@@ -368,7 +368,7 @@ def draw_button(surface, rect, label, font, base_color, hot_color, mouse_pos,
 #  notifies the other player for now, it doesn't start a game yet.
 # ---------------------------------------------------------------------
 SERVER_HOST = "pong-skills-remastered-release.onrender.com"  # LAN play: change to your host's local IP.
-SERVER_PORT = 8765         # Both machines must use the same port.
+SERVER_PORT = int(os.environ.get("PORT", 8765))        # Both machines must use the same port.
 
 net = NetClient()
 net_state = {
