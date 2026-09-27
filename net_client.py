@@ -31,6 +31,19 @@ class NetClient:
         self.connected = False
         self.connect_error = None
 
+    def format_uri(self, target):
+        """Helper to ensure correct URI protocol (wss:// for SSL/Render, ws:// for local)."""
+        target = target.strip()
+        if target.startswith("ws://") or target.startswith("wss://"):
+            return target
+        
+        # Strip protocol prefix if present
+        target = target.replace("http://", "").replace("https://", "")
+        
+        if "onrender.com" in target or target.endswith(":443"):
+            return f"wss://{target}"
+        return f"ws://{target}"
+
     def connect(self, uri):
         """Start connecting in the background. Non-blocking; watch
         .connected / .connect_error to see how it went."""
@@ -54,7 +67,8 @@ class NetClient:
             except queue.Empty:
                 break
 
-        self._thread = threading.Thread(target=self._run, args=(uri,), daemon=True)
+        formatted_uri = self.format_uri(uri)
+        self._thread = threading.Thread(target=self._run, args=(formatted_uri,), daemon=True)
         self._thread.start()
 
     def disconnect(self):
@@ -85,7 +99,12 @@ class NetClient:
             self.connected = False
 
     async def _main(self, uri):
-        async with websockets.connect(uri, open_timeout=5) as ws:
+        async with websockets.connect(
+            uri,
+            open_timeout=10,
+            ping_interval=20,
+            ping_timeout=20
+        ) as ws:
             self.connected = True
             
             sender = asyncio.create_task(self._pump_out(ws))
@@ -99,7 +118,6 @@ class NetClient:
                 )
                 for t in pending:
                     t.cancel()
-                # Await pending tasks to let cancellation propagate cleanly
                 await asyncio.gather(*pending, return_exceptions=True)
 
                 for t in done:
