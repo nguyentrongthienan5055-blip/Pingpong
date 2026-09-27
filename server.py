@@ -19,7 +19,7 @@ import storage
 import match_engine
 
 # Bind to all network interfaces and dynamically pull the Cloud assigned PORT
-HOST = "74.220.52.0/24"
+HOST = "74.220.52.0"
 PORT = int(os.environ.get("PORT", 8765))
 
 WINNER_COINS = 20
